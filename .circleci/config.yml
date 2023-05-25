@@ -3,6 +3,7 @@
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
 version: 2.1
+
 command:
   destroy-environment:
     description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
@@ -22,11 +23,13 @@ command:
   
   install-kubectl:
     description: install kubectl command line tool
+
   steps:
      - run:
           name: get kubectl
           command: |
             curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+
 jobs:
   lint:
     docker:
@@ -143,6 +146,7 @@ jobs:
       # Here's where you will add some code to rollback on failure
       - destroy-environment:
           workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
+  
   cleanup:
     docker:
       - image: amazon/aws-cli
@@ -179,6 +183,7 @@ jobs:
               fi
               echo '--------------------'
             done
+
 workflows:
   default:
     jobs:
@@ -189,8 +194,8 @@ workflows:
       # - push-docker:
       #     requires: [build-docker]
       # - build-docker
-        - deploy-infrastructure
-        - deploy-backend:
-            requires: [deploy-infrastructure]
+      - deploy-infrastructure
+      - deploy-backend:
+          requires: [deploy-infrastructure]
       
             
