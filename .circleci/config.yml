@@ -3,24 +3,44 @@
 # Check https://circleci.com/docs/2.0/language-python/ for more details
 #
 version: 2
+command:
+  destroy-environment:
+    description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
+    parameters:
+      workflow_id:
+        default: "${CIRCLE_WORKFLOW_ID:0:7}"
+        type: string
+    steps:
+      - run:
+          name: Destroy environments
+          when: on_fail
+          command: |
+            aws s3 rm --recursive s3://udapeople-<<parameters.workflow_id>>
+            aws s3 rb s3://udapeople-<<parameters.workflow_id>> --force
+            aws cloudformation delete-stack --stack-name "udapeople-backend-<<parameters.workflow_id>>"
+            aws cloudformation delete-stack --stack-name "udapeople-frontend-<<parameters.workflow_id>>"
+  
+  install-kubectl:
+    description: install kubectl command line tool
+  steps:
+     - run:
+          name: get kubectl
+          command: |
+            curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
 jobs:
-  build:
+  lint:
     docker:
     # Use the same Docker base as the project
     - image: python:3.7.3-stretch
-
     working_directory: ~/repo
-
     steps:
       - checkout
-
       # Download and cache dependencies
       - restore_cache:
           keys:
             - v1-dependencies-{{ checksum "requirements.txt" }}
             # fallback to using the latest cache if no exact match is found
             - v1-dependencies-
-
       - run:
           name: install dependencies
           command: |
@@ -34,10 +54,79 @@ jobs:
           paths:
             - ./venv
           key: v1-dependencies-{{ checksum "requirements.txt" }}
-
       # run lint!
       - run:
           name: run lint
           command: |
             . venv/bin/activate
             make lint 
+  load-test:
+    docker:
+    # Use the same Docker base as the project
+    - image: python:3.7.3-stretch
+    working_directory: ~/repo
+    steps:
+      - checkout
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "requirements.txt" }}
+            # fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
+      - run:
+          name: install dependencies
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            make install
+      - save_cache:
+          paths:
+            - ./venv
+          key: v1-dependencies-{{ checksum "requirements.txt" }}
+      # run locust!
+      - run:
+          name: run docker
+          command: |
+            . venv/bin/activate
+            sh run_docker.sh
+      - run:
+          name: run locust
+          command: |
+            . venv/bin/activate
+            locust --headless --users 1 --spawn-rate 1 -H http://localhost:8000/predict
+  build-docker:
+    environment:
+      IMAGE_NAME: kynkyn/flask_app_img
+    docker:
+      - image: circleci/buildpack-deps:stretch
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: docker build -t $IMAGE_NAME:latest .
+  publish-latest:
+    environment:
+      IMAGE_NAME: kynkyn/flask_app_img
+    docker:
+      - image: circleci/buildpack-deps:stretch
+    steps:
+      - setup_remote_docker
+      - run:
+          name: Publish Docker Image to Docker Hub
+          command: |
+            echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            docker push $IMAGE_NAME:latest
+ 
+  
+workflows:
+  default:
+    jobs:
+      # - lint
+      # - load-test
+      # - build-docker:
+      #     requires: [lint]
+      # - push-docker:
+      #     requires: [build-docker]
+        - build-docker
+            
