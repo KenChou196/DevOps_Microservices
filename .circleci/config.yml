@@ -20,11 +20,21 @@ commands:
             aws s3 rb s3://flask-app-<<parameters.workflow_id>> --force
             aws cloudformation delete-stack --stack-name "flask-app-backend-<<parameters.workflow_id>>"
             aws cloudformation delete-stack --stack-name "flask-app-frontend-<<parameters.workflow_id>>"
-  
+
+  install_awscli:
+    description: Install awscli
+    steps:
+      - run:
+          name: Install awscli
+          command: |
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+
   install-kubectl:
     description: install kubectl command line tool
     steps:
-     - run:
+      - run:
           name: get kubectl
           command: |
             curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
@@ -32,8 +42,8 @@ commands:
 jobs:
   lint:
     docker:
-    # Use the same Docker base as the project
-    - image: python:3.7.3-stretch
+      # Use the same Docker base as the project
+      - image: python:3.7.3-stretch
     working_directory: ~/repo
     steps:
       - checkout
@@ -61,7 +71,8 @@ jobs:
           name: run lint
           command: |
             . venv/bin/activate
-            make lint 
+            make lint
+
   build-docker:
     environment:
       IMAGE_NAME: kynkyn/flask_app_img
@@ -72,12 +83,12 @@ jobs:
       - setup_remote_docker
       - run:
           name: Build Docker image
-          command: | 
+          command: |
             docker build -t $IMAGE_NAME:latest .
             echo "====> push image to docker hub"
             docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASS"
             docker push $IMAGE_NAME:latest
-          
+
   deploy-infrastructure:
     docker:
       # Docker image here that supports AWS CLI
@@ -119,7 +130,7 @@ jobs:
       # Here's where you will add some code to rollback on failure
       - destroy-environment:
           workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
-  
+
   deploy-backend:
     docker:
       - image: cimg/base:stable
@@ -144,7 +155,7 @@ jobs:
       # Here's where you will add some code to rollback on failure
       - destroy-environment:
           workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
-  
+
   cleanup:
     docker:
       - image: amazon/aws-cli
@@ -195,5 +206,3 @@ workflows:
       - deploy-infrastructure
       - deploy-backend:
           requires: [deploy-infrastructure]
-      
-            
