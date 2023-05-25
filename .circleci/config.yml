@@ -15,10 +15,10 @@ command:
           name: Destroy environments
           when: on_fail
           command: |
-            aws s3 rm --recursive s3://udapeople-<<parameters.workflow_id>>
-            aws s3 rb s3://udapeople-<<parameters.workflow_id>> --force
-            aws cloudformation delete-stack --stack-name "udapeople-backend-<<parameters.workflow_id>>"
-            aws cloudformation delete-stack --stack-name "udapeople-frontend-<<parameters.workflow_id>>"
+            aws s3 rm --recursive s3://flask-app-<<parameters.workflow_id>>
+            aws s3 rb s3://flask-app-<<parameters.workflow_id>> --force
+            aws cloudformation delete-stack --stack-name "flask-app-backend-<<parameters.workflow_id>>"
+            aws cloudformation delete-stack --stack-name "flask-app-frontend-<<parameters.workflow_id>>"
   
   install-kubectl:
     description: install kubectl command line tool
@@ -60,40 +60,6 @@ jobs:
           command: |
             . venv/bin/activate
             make lint 
-  load-test:
-    docker:
-    # Use the same Docker base as the project
-    - image: python:3.7.3-stretch
-    working_directory: ~/repo
-    steps:
-      - checkout
-      # Download and cache dependencies
-      - restore_cache:
-          keys:
-            - v1-dependencies-{{ checksum "requirements.txt" }}
-            # fallback to using the latest cache if no exact match is found
-            - v1-dependencies-
-      - run:
-          name: install dependencies
-          command: |
-            python3 -m venv venv
-            . venv/bin/activate
-            make install
-      - save_cache:
-          paths:
-            - ./venv
-          key: v1-dependencies-{{ checksum "requirements.txt" }}
-      # run locust!
-      - run:
-          name: run docker
-          command: |
-            . venv/bin/activate
-            sh run_docker.sh
-      - run:
-          name: run locust
-          command: |
-            . venv/bin/activate
-            locust --headless --users 1 --spawn-rate 1 -H http://localhost:8000/predict
   build-docker:
     environment:
       IMAGE_NAME: kynkyn/flask_app_img
@@ -110,20 +76,109 @@ jobs:
             docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASS"
             docker push $IMAGE_NAME:latest
           
-  # publish-latest:
-  #   environment:
-  #     IMAGE_NAME: kynkyn/flask_app_img
-  #   docker:
-  #     - image: circleci/buildpack-deps:stretch
-  #   steps:
-  #     - setup_remote_docker
-  #     - run:
-  #         name: Publish Docker Image to Docker Hub
-  #         command: |
-  #           echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-  #           docker push $IMAGE_NAME:latest
- 
+  deploy-infrastructure:
+    docker:
+      # Docker image here that supports AWS CLI
+      - image: amazon/aws-cli
+    steps:
+      # Checkout code from git
+      - checkout
+      - run: yum install -y tar gzip
+      - run:
+          name: Ensure back-end infrastructure exists
+          command: |
+            aws cloudformation deploy \
+              --template-file .circleci/files/backend.yml \
+              --tags project=flask-app \
+              --stack-name "flask-app-backend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID:0:7}"
+      - run:
+          name: deploy flask front end infra
+          command: |
+            aws cloudformation deploy \
+              --template-file .circleci/files/frontend.yml \
+              --tags project=flask-app \
+              --stack-name "flask-app-frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID="${CIRCLE_WORKFLOW_ID:0:7}"
+      - run:
+          name: deploy back-end ip to ansible inventory
+          command: |
+            # Your code here
+            cd .circleci/ansible
+            cat inventory.txt
+            aws ec2 describe-instances \
+              --query 'Reservations[*].Instances[*].PublicIpAddress' \
+              --output text --filter Name=tag:Name,Values=flask-app-${CIRCLE_WORKFLOW_ID:0:7} >> inventory.txt
+            cat inventory.txt
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - project/.circleci/ansible/inventory.txt
+      # Here's where you will add some code to rollback on failure
+      - destroy-environment:
+          workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
   
+  deploy-backend:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      # Checkout code from git
+      - checkout
+      # Add ssh keys with MY fingerprint
+      - add_ssh_keys:
+          fingerprints: ["68:b6:9a:55:7a:f2:30:47:60:e4:8b:c4:b5:59:e7:63"]
+      # attach workspace
+      - attach_workspace:
+          at: ~/
+      - install_node13
+      - install_awscli
+      - install_ansible
+      - run:
+          name: Deploy backend
+          command: |
+            cd .circleci/ansible
+            echo "------- Contents  of the inventory.txt file is -------"
+            cat inventory.txt
+            ansible-playbook -i inventory.txt deploy-backend.yml
+      # Here's where you will add some code to rollback on failure
+      - destroy-environment:
+          workflow_id: ${CIRCLE_WORKFLOW_ID:0:7}
+  cleanup:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      # Checkout code from git
+      - checkout
+      - run:
+          name: Get old stack workflow id and remove
+          command: |
+            # your code here
+            echo CIRCLE_WORKFLOW_ID "${CIRCLE_WORKFLOW_ID:0:7}"
+            export STACKS=($(aws cloudformation list-stacks --query "StackSummaries[*].StackName" \
+                    --stack-status-filter CREATE_COMPLETE --no-paginate --output text))
+            echo Stack names: "${STACKS[@]}"
+            echo '------------------'
+            export BACKENDSTACKS=($(aws cloudformation describe-stacks --no-paginate --query 'Stacks[?StackName!=`null`]|[?contains(StackName, `flask-app-backend`) == `true`].StackName' --output text))
+            echo List backend stacks: "${BACKENDSTACKS[@]}"
+            echo '--------------------'
+            for BACKENDSTACK in "${BACKENDSTACKS[@]}"
+            do
+              OldWorkflowID=${BACKENDSTACK: -7}
+              echo '--------------------'
+              echo handling cleanup workflowID: "${OldWorkflowID}"
+              if [[ "${OldWorkflowID}" != "${CIRCLE_WORKFLOW_ID:0:7}" ]]
+              then
+                echo removing resources of OldWorkflowID: "${OldWorkflowID}"
+                aws s3 rm --recursive s3://flask-app-${OldWorkflowID}
+                aws s3 rb --force s3://flask-app-${OldWorkflowID}
+                aws cloudformation delete-stack --stack-name flask-app-backend-${OldWorkflowID}
+                aws cloudformation delete-stack --stack-name flask-app-frontend-${OldWorkflowID}
+                echo done removing
+              else
+                echo '------------------ this is the current workflow -----------------'
+              fi
+              echo '--------------------'
+            done
 workflows:
   default:
     jobs:
@@ -133,5 +188,9 @@ workflows:
       #     requires: [lint]
       # - push-docker:
       #     requires: [build-docker]
-        - build-docker
+      # - build-docker
+        - deploy-infrastructure
+        - deploy-backend:
+            requires: [deploy-infrastructure]
+      
             

@@ -1,0 +1,16 @@
+- name: log into docker hub registry
+  shell: |
+    echo "$DOCKERHUB_USERNAME"
+  docker_login:
+    email: "nguyenkaoky.ai1@gmail.com"
+    username: "$DOCKERHUB_USERNAME"
+    password: "$DOCKERHUB_PASS"
+
+- name: ensure a container is running
+  docker_container:
+    name: flask-app-container
+    state: started
+    image: "kynkyn/flask_app_img:latest"
+    pull: true
+    ports:
+      - "8000:80"

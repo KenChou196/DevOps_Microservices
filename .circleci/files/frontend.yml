@@ -10,7 +10,7 @@ Resources:
   WebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "flaskapp-${ID}"
+      BucketName: !Sub "flask-app-${ID}"
       # AccessControl: PublicRead
       PublicAccessBlockConfiguration:
         BlockPublicPolicy: false
