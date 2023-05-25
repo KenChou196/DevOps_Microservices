@@ -10,8 +10,8 @@ dockerpath=flask_app_img
 # Step 2:  
 # Authenticate & tag
 echo "Docker ID and Image: $dockerpath"
-docker login
-docker tag  $dockerpath kynkyn/flask_app_img:v2
+# docker login
+docker tag  $dockerpath kynkyn/flask_app_img:latest
 # Step 3:
 # Push image to a docker repository
-docker push $dockerpath
+docker push kynkyn/flask_app_img:latest

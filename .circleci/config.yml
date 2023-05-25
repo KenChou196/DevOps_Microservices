@@ -39,8 +39,17 @@ commands:
           command: |
             sudo apt update
             sudo apt install ansible -y
+  
+  install_eksctl:
+    description: Install eksctl
+    steps:
+      - run:
+          name: Install eksctl
+          command: |
+            curl --silent --location "https://github.com/weaveworks/eksctl/releases/download/latest_release/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+            sudo mv /tmp/eksctl /usr/local/bin
 
-  install-kubectl:
+  install_kubectl:
     description: install kubectl command line tool
     steps:
       - run:
@@ -93,10 +102,15 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            docker build -t $IMAGE_NAME:latest .
+            cd services
+            docker --version
+            # Build image and add a descriptive tag
+            docker build -t flask_app_img:latest .
+            # List docker images
+            docker images
             echo "====> push image to docker hub"
             docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASS"
-            docker push $IMAGE_NAME:latest
+            docker push kynkyn/flask_app_img:latest
 
   deploy-infrastructure:
     docker:
@@ -162,9 +176,9 @@ jobs:
             --output text)
             echo "=========> BACKEND_IP IS:"
             echo "$BACKEND_IP"
-            export API_URL="http://${BACKEND_IP}:3030"
+            export API_URL="http://${BACKEND_IP}:8000"
             echo "API_URL = ${API_URL}"
-            echo "API_URL=http://${BACKEND_IP}:3030" >> frontend/.env
+            echo "API_URL=http://${BACKEND_IP}:8000" >> frontend/.env
             cat frontend/.env
       - run:
           name: Deploy frontend objects
@@ -185,17 +199,18 @@ jobs:
       # Checkout code from git
       - checkout
       # Add ssh keys with MY fingerprint
-      - add_ssh_keys:
-          fingerprints: ["68:b6:9a:55:7a:f2:30:47:60:e4:8b:c4:b5:59:e7:63"]
+      # - add_ssh_keys:
+      #     fingerprints: ["68:b6:9a:55:7a:f2:30:47:60:e4:8b:c4:b5:59:e7:63"]
       # attach workspace
       - attach_workspace:
           at: ~/
       - install_awscli
-      - install_ansible
+      - install_eksctl
+      - install_kubectl
       - run:
           name: Deploy backend
           command: |
-            cd .circleci/ansible
+            # cd .circleci/ansible
             echo "------- Contents  of the inventory.txt file is -------"
             cat inventory.txt
             ansible-playbook -i inventory.txt deploy-backend.yml
@@ -251,8 +266,9 @@ workflows:
       #     requires: [build-docker]
       # - build-docker
       - deploy-infrastructure
-      - deploy-frontend
-      - deploy-backend:
+      - deploy-frontend:
           requires: [deploy-infrastructure]
-      - cleanup
+      # - deploy-backend:
+      #     requires: [deploy-infrastructure]
+      # - cleanup
       
