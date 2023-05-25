@@ -132,7 +132,6 @@ jobs:
       # attach workspace
       - attach_workspace:
           at: ~/
-      - install_node13
       - install_awscli
       - install_ansible
       - run:
