@@ -4,7 +4,7 @@
 #
 version: 2.1
 
-command:
+commands:
   destroy-environment:
     description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
     parameters:
@@ -23,8 +23,7 @@ command:
   
   install-kubectl:
     description: install kubectl command line tool
-
-  steps:
+    steps:
      - run:
           name: get kubectl
           command: |
