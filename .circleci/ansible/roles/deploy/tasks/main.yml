@@ -1,6 +1,4 @@
 - name: log into docker hub registry
-  shell: |
-    echo "$DOCKERHUB_USERNAME"
   docker_login:
     email: "nguyenkaoky.ai1@gmail.com"
     username: "$DOCKERHUB_USERNAME"

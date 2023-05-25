@@ -212,7 +212,8 @@ workflows:
       # - push-docker:
       #     requires: [build-docker]
       # - build-docker
-      # - deploy-infrastructure
-      - cleanup
-      # - deploy-backend:
-      #     requires: [deploy-infrastructure]
+      - deploy-infrastructure
+      - deploy-backend:
+          requires: [deploy-infrastructure]
+      # - cleanup
+      
