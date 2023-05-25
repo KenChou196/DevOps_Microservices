@@ -191,8 +191,8 @@ jobs:
               if [[ "${OldWorkflowID}" != "${CIRCLE_WORKFLOW_ID:0:7}" ]]
               then
                 echo removing resources of OldWorkflowID: "${OldWorkflowID}"
-                aws s3 rm --recursive s3://flask-app-${OldWorkflowID}
-                aws s3 rb --force s3://flask-app-${OldWorkflowID}
+                # aws s3 rm --recursive s3://flask-app-${OldWorkflowID}
+                # aws s3 rb --force s3://flask-app-${OldWorkflowID}
                 aws cloudformation delete-stack --stack-name flask-app-backend-${OldWorkflowID}
                 aws cloudformation delete-stack --stack-name flask-app-frontend-${OldWorkflowID}
                 echo done removing
@@ -212,6 +212,7 @@ workflows:
       # - push-docker:
       #     requires: [build-docker]
       # - build-docker
-      - deploy-infrastructure
-      - deploy-backend:
-          requires: [deploy-infrastructure]
+      # - deploy-infrastructure
+      - cleanup
+      # - deploy-backend:
+      #     requires: [deploy-infrastructure]
